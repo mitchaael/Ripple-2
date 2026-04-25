@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <title>Ripple</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#6366f1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Ripple">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script src="app-constants.js?v=4"></script>
+  <script src="app-notifications.js?v=4"></script>
+  <script type="text/babel" src="ios-frame.jsx?v=4"></script>
+  <script type="text/babel" src="app-components.jsx?v=4"></script>
+  <script type="text/babel" src="app-screens.jsx?v=4"></script>
+  <script type="text/babel" src="app-myday.jsx?v=4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --accent:      #6366f1;
+      --accent-sec:  #8b5cf6;
+      --accent-rgb:  99,102,241;
+      --accent-grad: linear-gradient(135deg,#6366f1,#8b5cf6);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; scrollbar-width: none; }
+    *::-webkit-scrollbar { display: none; }
+
+    /* ── ESCRITORIO: body centra el frame de iPhone ── */
+    body {
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      transition: background .6s ease;
+    }
+    body.dark  { background: #080810; }
+    body.light { background: #e8e4de; }
+
+    /* ── MÓVIL: la app ocupa toda la pantalla ── */
+    @media (max-width: 768px) {
+      body {
+        align-items: stretch;
+        justify-content: stretch;
+        height: 100dvh;          /* dynamic viewport height */
+        height: 100vh;           /* fallback */
+        overflow: hidden;
+      }
+    }
+
+    #root {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* En móvil, #root ocupa toda la pantalla */
+    @media (max-width: 768px) {
+      #root {
+        width: 100%;
+        height: 100%;
+        height: 100dvh;
+        align-items: stretch;
+      }
+    }
+
+    #ambient-root { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+
+    .phone-label {
+      font-size: 10px; font-weight: 500; letter-spacing: .12em;
+      text-transform: uppercase; text-align: center; margin-top: 14px;
+      transition: color .4s;
+    }
+    body.dark  .phone-label { color: rgba(255,255,255,.2); }
+    body.light .phone-label { color: rgba(0,0,0,.25); }
+    @media (max-width: 768px) { .phone-label { display: none; } }
+
+    .app-screen {
+      width: 100%; height: 100%;
+      display: flex; flex-direction: column;
+      overflow: hidden; position: relative;
+      transition: background .4s;
+    }
+
+    /* overlay + sheet */
+    .overlay {
+      position: absolute; inset: 0; z-index: 50;
+      background: rgba(0,0,0,.6);
+      backdrop-filter: blur(10px);
+      display: flex; flex-direction: column; justify-content: flex-end;
+    }
+    @keyframes sheetUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
+    .sheet {
+      border-top-left-radius: 28px; border-top-right-radius: 28px;
+      border-top: 1px solid rgba(255,255,255,.08);
+      padding: 10px 18px 44px;
+      animation: sheetUp .32s cubic-bezier(.32,1.02,.6,1) both;
+    }
+    /* Espacio extra para el notch inferior en iPhone */
+    @supports (padding-bottom: env(safe-area-inset-bottom)) {
+      .sheet { padding-bottom: calc(44px + env(safe-area-inset-bottom)); }
+    }
+    .handle { width: 36px; height: 4px; border-radius: 99px; margin: 0 auto 18px; }
+
+    /* Tab bar */
+    .tabbar {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 88px;
+      backdrop-filter: blur(28px);
+      border-top-width: 1px; border-top-style: solid;
+      display: flex; align-items: flex-start; justify-content: space-around;
+      padding-top: 10px; z-index: 20;
+      transition: background .4s, border-color .4s;
+    }
+    /* Safe area para iPhone con notch/home bar */
+    @supports (padding-bottom: env(safe-area-inset-bottom)) {
+      .tabbar {
+        height: calc(68px + env(safe-area-inset-bottom));
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+    }
+    .tab {
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      cursor: pointer; opacity: .35; transition: opacity .18s; min-width: 56px;
+    }
+    .tab.on { opacity: 1; }
+    .tab span { font-size: 10px; font-weight: 600; }
+    .tab-pip {
+      width: 4px; height: 4px; border-radius: 50%; margin-top: 1px;
+      background: var(--accent); opacity: 0; transition: opacity .18s;
+    }
+    .tab.on .tab-pip { opacity: 1; }
+
+    /* FAB */
+    .fab {
+      position: absolute; bottom: 100px; right: 16px; z-index: 19;
+      width: 52px; height: 52px; border-radius: 50%; border: none;
+      background: var(--accent-grad);
+      box-shadow: 0 6px 22px rgba(var(--accent-rgb),.5);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: transform .18s, box-shadow .18s;
+    }
+    .fab:active { transform: scale(.9); box-shadow: 0 2px 8px rgba(var(--accent-rgb),.3); }
+
+    /* Animaciones */
+    @keyframes fadeUp   { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes pop      { 0%{transform:scale(1)} 40%{transform:scale(1.07)} 75%{transform:scale(.96)} 100%{transform:scale(1)} }
+    @keyframes checkBounce { 0%{transform:scale(0) rotate(-20deg)} 60%{transform:scale(1.25) rotate(5deg)} 100%{transform:scale(1) rotate(0)} }
+    @keyframes flicker  { 0%,100%{transform:scaleY(1) rotate(-2deg)} 50%{transform:scaleY(1.1) rotate(2deg)} }
+    @keyframes burst    { 0%{transform:translate(0,0) rotate(0deg) scale(1);opacity:1} 60%{opacity:1} 100%{transform:translate(var(--tx),var(--ty)) rotate(var(--spin)) scale(.4);opacity:0} }
+    @keyframes flashOut { 0%{transform:translate(-50%,-50%) scale(0);opacity:1} 40%{transform:translate(-50%,-50%) scale(1.5);opacity:.8} 100%{transform:translate(-50%,-50%) scale(2.5);opacity:0} }
+    @keyframes toastIn  { from{transform:translateX(120%);opacity:0} to{transform:translateX(0);opacity:1} }
+    @keyframes toastOut { from{transform:translateX(0);opacity:1} to{transform:translateX(120%);opacity:0} }
+    @keyframes tabSlideL { from{opacity:0;transform:translateX(-18px)} to{opacity:1;transform:translateX(0)} }
+    @keyframes tabSlideR { from{opacity:0;transform:translateX(18px)} to{opacity:1;transform:translateX(0)} }
+    @keyframes onboardIn { from{opacity:0;transform:translateY(30px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes drift1   { from{transform:translate(0,0) scale(1)} to{transform:translate(50px,35px) scale(1.08)} }
+    @keyframes drift2   { from{transform:translate(0,0) scale(1)} to{transform:translate(-35px,-50px) scale(1.12)} }
+    @keyframes blobFadeIn { from{opacity:0} to{opacity:1} }
+    @keyframes shimmerText { 0%{background-position:-200% center} 100%{background-position:200% center} }
+
+    .fade-up        { animation: fadeUp .35s ease both; }
+    .tab-slide-left { animation: tabSlideL .22s cubic-bezier(.4,0,.2,1) both; }
+    .tab-slide-right{ animation: tabSlideR .22s cubic-bezier(.4,0,.2,1) both; }
+
+    .inp {
+      width: 100%; padding: 13px 15px; border-radius: 14px;
+      outline: none; font-family: 'Inter', sans-serif; font-size: 15px;
+      transition: border-color .15s;
+    }
+    .inp::placeholder { color: rgba(128,128,140,.5); }
+  </style>
+</head>
+<body class="dark">
+<div id="ambient-root"></div>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+// ─── Detectar si estamos en móvil o PWA instalada ─────────────
+function isMobileOrPWA() {
+  return (
+    window.matchMedia('(max-width: 768px)').matches ||
+    window.navigator.standalone === true ||
+    window.matchMedia('(display-mode: standalone)').matches ||
+    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+  );
+}
+
+// ─── Home Screen ───────────────────────────────────────────────
+function HomeScreen({ habits, onToggle, onDelete, onEdit, onTimerOpen, onAdd, onAI, meta, addToast }) {
+  const T = useT();
+  const [filter, setFilter] = useState('Todos');
+  const todayKey = todayStr();
+  const total = habits.length, done = habits.filter(h=>h.done).length;
+  const pct   = total===0 ? 0 : Math.round(done/total*100);
+  const maxStreak = habits.reduce((m,h)=>Math.max(m,h.streak||0), 0);
+  const hour = new Date().getHours();
+  const greeting = hour<12 ? 'Buenos días ☀️' : hour<18 ? 'Buenas tardes 🌤' : 'Buenas noches 🌙';
+  const profileName = meta?.profile?.name;
+  const quote = useMemo(()=>QUOTES[Math.floor(Math.random()*QUOTES.length)], []);
+
+  const filtered  = filter==='Todos' ? habits : habits.filter(h=>h.category===filter);
+  const pending   = filtered.filter(h=>!h.done);
+  const completed = filtered.filter(h=>h.done);
+
+  return (
+    <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative'}}>
+      {/* Header */}
+      <div style={{padding:'14px 18px 12px',background:T.isDark?'linear-gradient(180deg,rgba(99,102,241,.12) 0%,transparent)':'linear-gradient(180deg,rgba(99,102,241,.06) 0%,transparent)',flexShrink:0}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:14}}>
+          <div>
+            <p style={{color:T.textDim,fontSize:11,fontWeight:500,marginBottom:2}}>{greeting}{profileName?`, ${profileName}`:''}</p>
+            <div style={{display:'flex',alignItems:'center',gap:9}}>
+              <img src="ripple-logo-dark.svg" width="28" height="28" style={{borderRadius:8,flexShrink:0}} alt="Ripple"
+                onError={e=>{ e.target.style.display='none'; }}/>
+              <p style={{color:T.text,fontSize:21,fontWeight:900,lineHeight:1.1}}>Ripple</p>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            {maxStreak>0&&(
+              <div style={{background:'rgba(249,115,22,.14)',border:'1px solid rgba(249,115,22,.25)',borderRadius:12,padding:'5px 10px',display:'flex',alignItems:'center',gap:4}}>
+                <span style={{display:'inline-block',animation:'flicker .8s ease-in-out infinite'}}>🔥</span>
+                <span style={{color:'#f97316',fontSize:13,fontWeight:700}}>{maxStreak}</span>
+              </div>
+            )}
+            <button onClick={onAI} style={{width:36,height:36,borderRadius:'50%',border:`1px solid ${T.cardBorder}`,background:T.chipInactive,cursor:'pointer',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center'}} title="Sugerencias IA">🤖</button>
+          </div>
+        </div>
+
+        {/* Tarjeta de progreso */}
+        <div style={{padding:'14px 16px',display:'flex',alignItems:'center',gap:14,background:T.card,border:`1px solid ${T.cardBorder}`,borderRadius:20}}>
+          <div style={{position:'relative',display:'inline-flex',flexShrink:0}}>
+            <Ring pct={pct} size={66} stroke={6} color={habits.find(h=>!h.done)?.color||'#6366f1'}/>
+            <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <span style={{color:T.text,fontSize:13,fontWeight:800}}>{pct}%</span>
+            </div>
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            {done===total&&total>0
+              ? <p style={{color:'#22c55e',fontSize:14,fontWeight:700,animation:'pop .4s ease'}}>¡Día perfecto! 🎉</p>
+              : <p style={{color:T.text,fontSize:14,fontWeight:700}}>{done} de {total} completados</p>
+            }
+            <p style={{color:T.textDim,fontSize:11,marginTop:2,lineHeight:1.4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{quote}</p>
+            <div style={{marginTop:9,height:4,background:T.chipInactive,borderRadius:99,overflow:'hidden'}}>
+              <div style={{height:'100%',width:`${pct}%`,background:'linear-gradient(90deg,#6366f1,#a855f7)',borderRadius:99,transition:'width .8s ease'}}/>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filtro de categorías */}
+      <div style={{padding:'8px 16px 6px',overflowX:'auto',display:'flex',gap:7,flexShrink:0}}>
+        {CATS.map(c=>(
+          <button key={c} onClick={()=>setFilter(c)} style={{padding:'6px 12px',borderRadius:99,fontFamily:'Inter,sans-serif',fontSize:12,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap',border:`1px solid ${filter===c?'rgba(99,102,241,.4)':T.cardBorder}`,background:filter===c?'rgba(99,102,241,.25)':T.chipInactive,color:filter===c?'#a5b4fc':T.chipColor,transition:'all .15s'}}>
+            {CAT_IC[c]} {c}
+          </button>
+        ))}
+      </div>
+
+      {/* Lista de hábitos */}
+      <div style={{flex:1,overflowY:'auto',padding:'4px 16px 0'}}>
+        {filtered.length===0?(
+          <div style={{textAlign:'center',marginTop:55,opacity:.4}}>
+            <div style={{fontSize:50}}>🌱</div>
+            <p style={{color:T.textDim,marginTop:12,fontSize:14}}>Sin hábitos aquí</p>
+            <p style={{color:T.textFaint,fontSize:12,marginTop:4}}>Pulsa + o 🤖 para empezar</p>
+          </div>
+        ):(
+          <div style={{display:'flex',flexDirection:'column',gap:9}}>
+            {pending.length>0&&(
+              <>
+                <p style={{color:T.textDim,fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',marginTop:6}}>Pendientes · {pending.length}</p>
+                {pending.map((h,i)=><HabitRow key={h.id} habit={h} idx={i} onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} onTimerOpen={onTimerOpen} today={todayStr()}/>)}
+              </>
+            )}
+            {completed.length>0&&(
+              <>
+                <p style={{color:T.textDim,fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'.08em',marginTop:8}}>Completados ✓</p>
+                {completed.map((h,i)=><HabitRow key={h.id} habit={h} idx={i} onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} onTimerOpen={onTimerOpen} today={todayStr()}/>)}
+              </>
+            )}
+            <div style={{height:16}}/>
+          </div>
+        )}
+      </div>
+
+      {/* FAB */}
+      <button className="fab" onClick={onAdd}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+  );
+}
+
+// ─── App ───────────────────────────────────────────────────────
+function App() {
+  const [habits, setHabits]       = useState(()=>ld('mh4_habits',[]));
+  const [meta, setMeta]           = useState(()=>ld('mh4_meta',{hadPerfectDay:false,lightMode:false,profile:{name:'',emoji:'😊'}}));
+  const [onboarded, setOnboarded] = useState(()=>ld('mh4_onboarded',false));
+  const [tab, setTab]             = useState('home');
+  const [tabDir, setTabDir]       = useState('right');
+  const [showAdd, setShowAdd]     = useState(false);
+  const [showAI, setShowAI]       = useState(false);
+  const [delTarget, setDelTarget] = useState(null);
+  const [editTarget, setEditTarget] = useState(null);
+  const [timerTarget, setTimerTarget] = useState(null);
+  const [confetti, setConfetti]   = useState(false);
+  const { toasts, add: addToast } = useToast();
+  const prevDone    = useRef(null);
+  const prevStreaks  = useRef({});
+  const todayKey    = todayStr();
+
+  // Persistir
+  useEffect(()=>sv('mh4_habits',habits), [habits]);
+  useEffect(()=>sv('mh4_meta',meta), [meta]);
+
+  // Tema
+  const T = buildTheme(meta.lightMode, meta.accent||'indigo');
+
+  // Aplicar clase body + variables CSS
+  useEffect(()=>{
+    document.body.className = meta.lightMode ? 'light' : 'dark';
+    const root = document.documentElement;
+    root.style.setProperty('--accent',      T.accent);
+    root.style.setProperty('--accent-sec',  T.accentSec);
+    root.style.setProperty('--accent-rgb',  T.accentRgb);
+    root.style.setProperty('--accent-grad', T.accentGrad);
+    if (window.__setAmbStreak) window.__setAmbStreak(maxStreak, meta.lightMode);
+  }, [meta.lightMode, T.accent, maxStreak]);
+
+  // Notificaciones
+  useEffect(()=>{
+    const prefs = loadNotifPrefs();
+    if (prefs.enabled && getNotifPermission()==='granted') {
+      scheduleNotifications(habits, prefs);
+    }
+  }, []);
+
+  // Reset diario
+  useEffect(()=>{
+    const last = localStorage.getItem('mh4_lastReset')||'';
+    if (last !== todayKey) {
+      setHabits(p=>p.map(h=>({...h,done:false,count:h.count||0,timeSpent:0})));
+      localStorage.setItem('mh4_lastReset', todayKey);
+    }
+  }, []);
+
+  const total     = habits.length;
+  const done      = habits.filter(h=>h.done).length;
+  const maxStreak = habits.reduce((m,h)=>Math.max(m,h.streak||0), 0);
+
+  // Sincronizar ambient
+  useEffect(()=>{
+    if (window.__setAmbStreak) window.__setAmbStreak(maxStreak, meta.lightMode);
+  }, [maxStreak]);
+
+  // Confetti día perfecto
+  useEffect(()=>{
+    if (total>0 && done===total && prevDone.current!==total) {
+      setConfetti(true); playSuccessChime();
+      setTimeout(()=>setConfetti(false), 3500);
+      if (!meta.hadPerfectDay) setMeta(m=>({...m,hadPerfectDay:true}));
+    }
+    prevDone.current = done;
+  }, [done, total]);
+
+  const addHabit  = useCallback((h)=>{ setHabits(p=>[...p,{id:crypto.randomUUID(),...h}]); }, []);
+  const addHabits = useCallback((list)=>{ setHabits(p=>[...p,...list]); }, []);
+
+  const toggleHabit = useCallback((id, action)=>{
+    setHabits(p=>p.map(h=>{
+      if (h.id !== id) return h;
+      if (h.type==='counter') {
+        let count = h.count||0;
+        if (action==='inc') count = Math.min(count+1, h.target||8);
+        if (action==='dec') count = Math.max(count-1, 0);
+        const nowDone = count >= (h.target||8);
+        let streak=h.streak||0, lastDate=h.lastDate;
+        if (nowDone && !h.done) {
+          const yesterday = new Date(Date.now()-86400000).toISOString().slice(0,10);
+          if (lastDate===yesterday) streak+=1; else if (lastDate!==todayKey) streak=1;
+          lastDate = todayKey;
+          const msg = TOAST_MSGS[Math.floor(Math.random()*TOAST_MSGS.length)];
+          setTimeout(()=>addToast(msg,h.color,h.icon), 80);
+          checkStreakMilestone(h, streak);
+        }
+        const hist = {...(h.history||{}), [todayKey]: count||undefined};
+        if (!count) delete hist[todayKey];
+        return {...h, count, done:nowDone, streak, lastDate, history:hist};
+      }
+      const nowDone = !h.done;
+      let streak=h.streak||0, lastDate=h.lastDate;
+      if (nowDone) {
+        const yesterday = new Date(Date.now()-86400000).toISOString().slice(0,10);
+        if (lastDate===yesterday) streak+=1; else if (lastDate!==todayKey) streak=1;
+        lastDate = todayKey;
+        const msg = TOAST_MSGS[Math.floor(Math.random()*TOAST_MSGS.length)];
+        setTimeout(()=>addToast(msg,h.color,h.icon), 80);
+        checkStreakMilestone(h, streak);
+      } else {
+        if (lastDate===todayKey) streak = Math.max(0, streak-1);
+      }
+      const hist = {...(h.history||{})};
+      if (nowDone) hist[todayKey]=1; else delete hist[todayKey];
+      return {...h, done:nowDone, streak, lastDate, history:hist};
+    }));
+  }, [todayKey, addToast]);
+
+  const checkStreakMilestone = (h, streak)=>{
+    const prev = prevStreaks.current[h.id]||0;
+    if (streak===3  && prev<3)  setTimeout(()=>addToast('¡Racha de 3 días! 🔥','#f97316','🔥'), 700);
+    if (streak===7  && prev<7)  setTimeout(()=>addToast('¡Semana perfecta! ⚡','#eab308','⚡'), 700);
+    if (streak===30 && prev<30) setTimeout(()=>addToast('¡Maestro del hábito! 💎','#06b6d4','💎'), 700);
+    prevStreaks.current[h.id] = streak;
+  };
+
+  const timerDone = (id, elapsed)=>{
+    setHabits(p=>p.map(h=>{
+      if (h.id !== id) return h;
+      const nowDone = elapsed >= (h.target||300)*0.8;
+      let streak=h.streak||0, lastDate=h.lastDate;
+      if (nowDone) {
+        const yesterday = new Date(Date.now()-86400000).toISOString().slice(0,10);
+        if (lastDate===yesterday) streak+=1; else if (lastDate!==todayKey) streak=1;
+        lastDate = todayKey;
+      }
+      const hist = {...(h.history||{})};
+      if (nowDone) hist[todayKey]=elapsed; else delete hist[todayKey];
+      return {...h, done:nowDone, timeSpent:elapsed, streak, lastDate, history:hist};
+    }));
+  };
+
+  const editHabit   = (id, updates) => setHabits(p=>p.map(h=>h.id===id?{...h,...updates}:h));
+  const deleteHabit = ()=>{ setHabits(p=>p.filter(h=>h.id!==delTarget.id)); setDelTarget(null); };
+  const clearAll    = ()=>{ setHabits([]); setMeta(m=>({...m,hadPerfectDay:false})); sv('mh4_lastReset',''); };
+
+  const TAB_ORDER = ['home','stats','myday','logros','settings'];
+  const goTab = id=>{ const fi=TAB_ORDER.indexOf(tab), ti=TAB_ORDER.indexOf(id); setTabDir(ti>=fi?'right':'left'); setTab(id); };
+
+  const tabs = [
+    { id:'home',     icon:['M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z','M9 22V12h6v10'], label:'Inicio' },
+    { id:'stats',    icon:['M18 20V10','M12 20V4','M6 20v-6'],                                label:'Stats' },
+    { id:'logros',   icon:'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z', label:'Logros' },
+    { id:'myday',    icon:['M8 6h13','M8 12h13','M8 18h13','M3 6h.01','M3 12h.01','M3 18h.01'], label:'Mi Día' },
+    { id:'settings', icon:'M12 15a3 3 0 100-6 3 3 0 000 6z M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z', label:'Ajustes' },
+  ];
+
+  const slideClass = `tab-slide-${tabDir}`;
+
+  return (
+    <ThemeCtx.Provider value={T}>
+      <div className="app-screen" style={{background:T.appBg}}>
+        <Confetti active={confetti}/>
+        <ToastContainer toasts={toasts}/>
+        {!onboarded && <Onboarding onDone={list=>{ if(list.length>0) addHabits(list); setOnboarded(true); sv('mh4_onboarded',true); }}/>}
+
+        {tab==='home' && (
+          <div key="home" className={slideClass} style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+            <HomeScreen habits={habits} onToggle={toggleHabit} onDelete={setDelTarget} onEdit={setEditTarget} onTimerOpen={setTimerTarget} onAdd={()=>setShowAdd(true)} onAI={()=>setShowAI(true)} meta={meta} addToast={addToast}/>
+          </div>
+        )}
+        {tab==='stats' && (
+          <div key="stats" className={slideClass} style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+            <StatsScreen habits={habits} meta={meta}/>
+          </div>
+        )}
+        {tab==='myday' && (
+          <div key="myday" className={slideClass} style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+            <MiDiaScreen habits={habits}/>
+          </div>
+        )}
+        {tab==='logros' && (
+          <div key="logros" className={slideClass} style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+            <LogrosScreen habits={habits} meta={meta}/>
+          </div>
+        )}
+        {tab==='settings' && (
+          <div key="settings" className={slideClass} style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+            <SettingsScreen meta={meta} onMetaChange={setMeta} habits={habits} onClear={clearAll}/>
+          </div>
+        )}
+
+        {/* Tab bar */}
+        <div className="tabbar" style={{background:T.tabBg,borderTopColor:T.tabBorder}}>
+          {tabs.map(t=>(
+            <div key={t.id} className={`tab${tab===t.id?' on':''}`} onClick={()=>goTab(t.id)}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                stroke={tab===t.id ? T.accent : 'rgba(128,128,140,.5)'}
+                strokeWidth={tab===t.id ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+                {(Array.isArray(t.icon)?t.icon:[t.icon]).map((p,i)=><path key={i} d={p}/>)}
+              </svg>
+              <span style={{color:tab===t.id?T.accentText:T.textDim}}>{t.label}</span>
+              <div className="tab-pip"/>
+            </div>
+          ))}
+        </div>
+
+        {/* Modales */}
+        {showAdd     && <AddSheet    onClose={()=>setShowAdd(false)}    onAdd={addHabit}/>}
+        {showAI      && <AISheet     habits={habits} onAdd={addHabit}   onClose={()=>setShowAI(false)}/>}
+        {delTarget   && <DeleteSheet habit={delTarget}                  onClose={()=>setDelTarget(null)}   onConfirm={deleteHabit}/>}
+        {editTarget  && <EditSheet   habit={editTarget}                 onClose={()=>setEditTarget(null)}  onSave={editHabit}/>}
+        {timerTarget && <TimerSheet  habit={timerTarget}                onClose={()=>setTimerTarget(null)} onDone={(elapsed)=>timerDone(timerTarget.id,elapsed)}/>}
+      </div>
+    </ThemeCtx.Provider>
+  );
+}
+
+// ─── Root ──────────────────────────────────────────────────────
+// En móvil/PWA → solo <App/> sin frame de iPhone
+// En escritorio → preview con frame de iPhone
+function Root() {
+  if (isMobileOrPWA()) {
+    return <App />;
+  }
+  return (
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
+      <IOSDevice dark={true}>
+        <IOSStatusBar dark={true} time="9:41"/>
+        <App/>
+      </IOSDevice>
+      <p className="phone-label">Ripple · Micro-Hábitos</p>
+    </div>
+  );
+}
+
+// Ambient portal
+function AmbientPortal() {
+  const [streak, setStreak]       = useState(0);
+  const [lightMode, setLightMode] = useState(false);
+  useEffect(()=>{ window.__setAmbStreak = (s,l)=>{ setStreak(s); setLightMode(!!l); }; }, []);
+  return <AmbientBg maxStreak={streak} lightMode={lightMode}/>;
+}
+
+ReactDOM.createRoot(document.getElementById('ambient-root')).render(<AmbientPortal/>);
+ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
+</script>
+
+<script>
+// ─── Registrar Service Worker ─────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('./service-worker.js')
+      .then(reg => console.log('[Ripple] SW registrado:', reg.scope))
+      .catch(err => console.warn('[Ripple] SW falló:', err));
+  });
+}
+</script>
+</body>
+</html>
